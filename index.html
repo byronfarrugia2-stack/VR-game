@@ -1,6 +1,5 @@
 <!doctype html>
 <html>
-
 <head>
   <script src="https://aframe.io/releases/1.7.1/aframe.min.js"></script>
 
@@ -14,17 +13,14 @@
       jumpscareDone: false
     };
 
-    function setContamination(amountDelta) {
-      GameState.contamination += amountDelta;
-      if (GameState.contamination < 0) GameState.contamination = 0;
-      if (GameState.contamination > 100) GameState.contamination = 100;
+    function setContamination(delta) {
+      GameState.contamination += delta;
+      GameState.contamination = Math.max(0, Math.min(100, GameState.contamination));
 
       const contamText = document.querySelector('#contamText');
       contamText.setAttribute('value', `Contamination: ${GameState.contamination}%`);
 
-      if (GameState.contamination >= 100) {
-        triggerFailureEnding();
-      }
+      if (GameState.contamination >= 100) triggerFailureEnding();
     }
 
     function triggerFailureEnding() {
@@ -39,20 +35,6 @@
       dir.setAttribute('light', 'intensity', 0.1);
     }
 
-    // ===== INTRO SEQUENCE =====
-    window.addEventListener('load', () => {
-      const introVoice = document.querySelector('#introVoice');
-      const goalText = document.querySelector('#goalText');
-
-      // Play intro voice
-      introVoice.components.sound.playSound();
-
-      // Show objective after a delay
-      setTimeout(() => {
-        goalText.setAttribute('visible', true);
-      }, 3000);
-    });
-
     // ===== LIGHTING MODES =====
     function setNormalLighting() {
       const ambient = document.querySelector('#ambientLight');
@@ -66,9 +48,24 @@
       const ambient = document.querySelector('#ambientLight');
       const dir = document.querySelector('#dirLight');
       ambient.setAttribute('light', 'intensity', 0.1);
-      dir.setAttribute('light', 'intensity', 0.2);
+      dir.setAttribute('light', 'intensity', 0.25);
       GameState.inEmergencyMode = true;
     }
+
+    // ===== INTRO SEQUENCE =====
+    window.addEventListener('load', () => {
+      const introVoice = document.querySelector('#introVoice');
+      const goalText = document.querySelector('#goalText');
+
+      introVoice.components.sound.playSound();
+
+      setTimeout(() => {
+        goalText.setAttribute('visible', true);
+      }, 2500);
+
+      setNormalLighting();
+      setContamination(0);
+    });
 
     // ===== JUMPSCARE EVENT =====
     function triggerJumpscare() {
@@ -78,17 +75,14 @@
       const bang = document.querySelector('#bangSound');
       const vent = document.querySelector('#ventDoor');
       const shadow = document.querySelector('#shadowFigure');
-
-      // Lights off
       const ambient = document.querySelector('#ambientLight');
       const dir = document.querySelector('#dirLight');
+
       ambient.setAttribute('light', 'intensity', 0);
       dir.setAttribute('light', 'intensity', 0);
 
-      // Bang sound
       bang.components.sound.playSound();
 
-      // Vent opens
       vent.setAttribute('animation__open', {
         property: 'rotation',
         to: '0 0 90',
@@ -96,44 +90,36 @@
         easing: 'easeOutQuad'
       });
 
-      // Shadow moves quickly
       shadow.setAttribute('animation__move', {
         property: 'position',
         to: '5 1 -25',
-        dur: 800,
+        dur: 700,
         easing: 'easeOutQuad'
       });
 
-      // Contamination spike
       setContamination(20);
 
-      // Flicker lights back to emergency mode
       setTimeout(() => {
         let flickerCount = 0;
         const flickerInterval = setInterval(() => {
-          const val = flickerCount % 2 === 0 ? 0.4 : 0.1;
+          const val = flickerCount % 2 === 0 ? 0.4 : 0.05;
           ambient.setAttribute('light', 'intensity', val);
           dir.setAttribute('light', 'intensity', val);
           flickerCount++;
-          if (flickerCount > 6) {
+          if (flickerCount > 8) {
             clearInterval(flickerInterval);
             setEmergencyLighting();
           }
-        }, 200);
-      }, 1000);
+        }, 150);
+      }, 900);
     }
 
-    // ===== PUZZLE 1: POWER RESTORE =====
-    // Three switches: all must be ON (green) to restore power.
+    // ===== PUZZLE 1: POWER RESTORE (3 SWITCHES) =====
     AFRAME.registerComponent('power-switch', {
-      schema: {
-        index: { type: 'int' }
-      },
+      schema: { index: { type: 'int' } },
       init: function () {
         this.isOn = false;
-        this.el.addEventListener('click', () => {
-          this.toggle();
-        });
+        this.el.addEventListener('click', () => this.toggle());
       },
       toggle: function () {
         this.isOn = !this.isOn;
@@ -145,26 +131,23 @@
     function checkPowerPuzzle() {
       const s1 = document.querySelector('#switch1').components['power-switch'].isOn;
       const s2 = document.querySelector('#switch2').components['power-switch'].isOn;
-      const s3 = document.querySelector('#switch3'].components['power-switch'].isOn;
+      const s3 = document.querySelector('#switch3').components['power-switch'].isOn;
 
-      if (s1 && s2 && s3 && !GameState.powerRestored) {
-        restorePower();
-      }
+      if (s1 && s2 && s3 && !GameState.powerRestored) restorePower();
     }
 
     function restorePower() {
       GameState.powerRestored = true;
       setNormalLighting();
 
-      const goalText = document.querySelector('#goalText');
+      const goalText = document.querySelector('#goalText'];
       goalText.setAttribute('value', 'Power restored. Next: DNA Sequencing.');
       goalText.setAttribute('color', 'white');
 
-      // Slight contamination drop as reward
       setContamination(-10);
     }
 
-    // ===== TRIGGER JUMPSCARE WHEN PLAYER APPROACHES CORE =====
+    // ===== CORE PROXIMITY TRIGGER FOR JUMPSCARE =====
     AFRAME.registerComponent('core-trigger', {
       tick: function () {
         if (GameState.jumpscareDone) return;
@@ -173,16 +156,13 @@
         const dx = player.x - core.x;
         const dz = player.z - core.z;
         const dist = Math.sqrt(dx * dx + dz * dz);
-        if (dist < 5) {
-          triggerJumpscare();
-        }
+        if (dist < 5) triggerJumpscare();
       }
     });
   </script>
 </head>
 
 <body>
-
   <a-scene>
 
     <!-- AUDIO -->
@@ -196,11 +176,10 @@
     <a-entity id="ambientLight" light="type: ambient; intensity: 0.5"></a-entity>
     <a-entity id="dirLight" light="type: directional; intensity: 0.8" position="0 10 -10"></a-entity>
 
-    <!-- LAB ROOM -->
+    <!-- ROOM -->
     <a-box position="0 5 -10" width="40" height="10" depth="40"
            color="#E0E0E0" material="side: double; opacity: 0.95"></a-box>
 
-    <!-- FLOOR -->
     <a-plane position="0 0 -10" rotation="-90 0 0"
              width="40" height="40" color="#FFFFFF"
              material="metalness: 0.2; roughness: 0.1"></a-plane>
@@ -210,26 +189,33 @@
     <a-box position="0 9 -10" width="6" height="0.2" depth="1" color="#FFFFFF"></a-box>
     <a-box position="10 9 -10" width="6" height="0.2" depth="1" color="#FFFFFF"></a-box>
 
-    <!-- LAB TABLES -->
+    <!-- TABLES + MONITORS -->
     <a-box position="-10 1 -5" width="6" height="1" depth="2" color="#CCCCCC"></a-box>
     <a-box position="5 1 -15" width="6" height="1" depth="2" color="#CCCCCC"></a-box>
 
-    <!-- COMPUTERS -->
     <a-box position="-10 2 -5" width="1" height="0.7" depth="0.1" color="#222"></a-box>
     <a-box position="5 2 -15" width="1" height="0.7" depth="0.1" color="#222"></a-box>
 
-    <!-- GLOWING TUBES -->
-    <a-cylinder position="-5 2 -20" radius="0.5" height="4"
-                color="#00FFFF" material="emissive: #00FFFF; emissiveIntensity: 0.6"></a-cylinder>
+    <!-- POWER SWITCHES (center back wall) -->
+    <a-box id="switch1" position="-2 2 -18" width="0.5" height="1" depth="0.2"
+           color="#FF0000" power-switch="index: 1"></a-box>
+    <a-box id="switch2" position="0 2 -18" width="0.5" height="1" depth="0.2"
+           color="#FF0000" power-switch="index: 2"></a-box>
+    <a-box id="switch3" position="2 2 -18" width="0.5" height="1" depth="0.2"
+           color="#FF0000" power-switch="index: 3"></a-box>
 
+    <!-- GLOWING TUBES + TEXT -->
     <a-cylinder position="-3 2 -20" radius="0.5" height="4"
+                color="#00FFFF" material="emissive: #00FFFF; emissiveIntensity: 0.6"></a-cylinder>
+    <a-cylinder position="3 2 -20" radius="0.5" height="4"
                 color="#FF00FF" material="emissive: #FF00FF; emissiveIntensity: 0.6"></a-cylinder>
 
-    <!-- CONTAINMENT CHAMBER -->
+    <a-text value="Combination: U+" position="-1 3.5 -19" color="red" width="4"></a-text>
+
+    <!-- CONTAINMENT CHAMBER + CORE -->
     <a-box position="10 2 -5" width="4" height="4" depth="4"
            color="#444" material="opacity: 0.4; transparent: true"></a-box>
 
-    <!-- PULSING CORE + JUMPSCARE TRIGGER -->
     <a-sphere id="core" position="10 2 -5" radius="1"
               color="#FF3300" material="emissive: #FF3300; emissiveIntensity: 0.8"
               animation="property: scale; dir: alternate; dur: 800; loop: true; to: 1.2 1.2 1.2"
@@ -240,24 +226,13 @@
     <a-box id="ventDoor" position="0 4 -25" width="4" height="2" depth="0.2" color="#777"></a-box>
     <a-box id="shadowFigure" position="-5 1 -25" width="1" height="2" depth="0.5" color="#000"></a-box>
 
-    <!-- POWER PUZZLE: SWITCHES -->
-    <a-box id="switch1" position="-5 2 -8" width="0.5" height="1" depth="0.2"
-           color="#FF0000" power-switch="index: 1"></a-box>
-    <a-box id="switch2" position="-4 2 -8" width="0.5" height="1" depth="0.2"
-           color="#FF0000" power-switch="index: 2"></a-box>
-    <a-box id="switch3" position="-3 2 -8" width="0.5" height="1" depth="0.2"
-           color="#FF0000" power-switch="index: 3"></a-box>
-
-    <!-- UI: CONTAMINATION METER -->
+    <!-- UI -->
     <a-text id="contamText" value="Contamination: 0%" position="-1 2 -3"
             color="red" width="4"></a-text>
 
-    <!-- UI: GOAL TEXT -->
     <a-text id="goalText" value="Objective: Restore Power" position="-1 1.5 -3"
             color="white" width="4" visible="false"></a-text>
 
   </a-scene>
-
 </body>
-
 </html>
