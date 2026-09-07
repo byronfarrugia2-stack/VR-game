@@ -1,89 +1,199 @@
 <!doctype html>
 <html>
 <head>
-  <script src="https://aframe.io"></script>
-
-  <script>
-    // ===== GLOBAL GAME STATE =====
-    const GameState = {
-      contamination: 0,
-      playerMarked: false,
-      powerRestored: false,
-      inEmergencyMode: false,
-      jumpscareDone: false
-    };
-
-    function setContamination(delta) {
-      GameState.contamination += delta;
-      GameState.contamination = Math.max(0, Math.min(100, GameState.contamination));
-
-      const contamText = document.querySelector('#contamText');
-      if (contamText) {
-        contamText.setAttribute('value', `Contamination: ${GameState.contamination}%`);
-      }
-
-      if (GameState.contamination >= 100) triggerFailureEnding();
-    }
-
-    function triggerFailureEnding() {
-      const goalText = document.querySelector('#goalText');
-      if (goalText) {
-        goalText.setAttribute('value', 'FAILURE: Contamination reached 100%.');
-        goalText.setAttribute('color', 'red');
-        goalText.setAttribute('visible', true);
-      }
-
-      const ambient = document.querySelector('#ambientLight');
-      const dir = document.querySelector('#dirLight');
-      // FIXED: Pass multi-property components as objects
-      if (ambient) ambient.setAttribute('light', { intensity: 0.1 });
-      if (dir) dir.setAttribute('light', { intensity: 0.1 });
-    }
-
-    // ===== LIGHTING MODES =====
-    function setNormalLighting() {
-      const ambient = document.querySelector('#ambientLight');
-      const dir = document.querySelector('#dirLight');
-      // FIXED: Pass multi-property components as objects
-      if (ambient) ambient.setAttribute('light', { intensity: 0.5 });
-      if (dir) dir.setAttribute('light', { intensity: 0.8 });
-      GameState.inEmergencyMode = false;
-    }
-
-    function setEmergencyLighting() {
-      const ambient = document.querySelector('#ambientLight');
-      const dir = document.querySelector('#dirLight');
-      // FIXED: Pass multi-property components as objects
-      if (ambient) ambient.setAttribute('light', { intensity: 0.1 });
-      if (dir) dir.setAttribute('light', { intensity: 0.25 });
-      GameState.inEmergencyMode = true;
-    }
-
-    // ===== INTRO SEQUENCE =====
-    window.addEventListener('load', () => {
-      const introVoice = document.querySelector('#introVoice');
-      // FIXED: Safely closed the event listener and handled logic
-      console.log("Game loaded. Current contamination:", GameState.contamination);
-    });
-  </script>
+  <script src="https://aframe.io/releases/1.7.1/aframe.min.js"></script>
+  <!-- Physics for collisions -->
+  <script src="https://cdn.jsdelivr.net/gh/n5ro/aframe-physics-system@v4.0.1/dist/aframe-physics-system.min.js"></script>
 </head>
+
 <body>
-  <a-scene>
-    <!-- Assets -->
-    <a-assets>
-      <audio id="introVoice" src="your-audio-file.mp3" preload="auto"></audio>
-    </a-assets>
+  <a-scene physics="gravity: -9.8; debug: false">
 
-    <!-- Lights -->
-    
-    
+    <!-- PLAYER (capsule collider) -->
+    <a-entity id="player"
+              camera
+              wasd-controls="acceleration: 25"
+              look-controls
+              position="0 1.6 0"
+              dynamic-body="shape: capsule; mass: 5">
+    </a-entity>
 
-    <!-- UI / Text Elements -->
-    <a-text id="contamText" value="Contamination: 0%" position="-1 2 -3" color="#FFF"></a-text>
-    <a-text id="goalText" value="" position="-1 1.5 -3" visible="false"></a-text>
+    <!-- LIGHTING -->
+    <a-entity light="type: ambient; intensity: 0.4; color: #ffffff"></a-entity>
+    <a-entity light="type: directional; intensity: 0.9; color: #ffffff" position="5 10 -5"></a-entity>
 
-    <!-- Camera -->
-    
+    <!-- FLOOR -->
+    <a-box position="0 0 -10"
+           width="24" height="0.2" depth="16"
+           color="#F5F5F5"
+           static-body></a-box>
+
+    <!-- CEILING -->
+    <a-box position="0 6 -10"
+           width="24" height="0.2" depth="16"
+           color="#E0E0E0"
+           static-body></a-box>
+
+    <!-- WALLS -->
+    <!-- Back wall -->
+    <a-box position="0 3 -18"
+           width="24" height="6" depth="0.2"
+           color="#D0D0D0"
+           static-body></a-box>
+
+    <!-- Front wall (behind player) -->
+    <a-box position="0 3 -2"
+           width="24" height="6" depth="0.2"
+           color="#D0D0D0"
+           static-body></a-box>
+
+    <!-- Left wall -->
+    <a-box position="-12 3 -10"
+           width="0.2" height="6" depth="16"
+           color="#D0D0D0"
+           static-body></a-box>
+
+    <!-- Right wall -->
+    <a-box position="12 3 -10"
+           width="0.2" height="6" depth="16"
+           color="#D0D0D0"
+           static-body></a-box>
+
+    <!-- CEILING LIGHT PANELS -->
+    <a-box position="-6 5.8 -10" width="4" height="0.1" depth="1" color="#FFFFFF"></a-box>
+    <a-box position="0 5.8 -10"  width="4" height="0.1" depth="1" color="#FFFFFF"></a-box>
+    <a-box position="6 5.8 -10"  width="4" height="0.1" depth="1" color="#FFFFFF"></a-box>
+
+    <!-- LEFT LAB BENCH -->
+    <a-box position="-7 1 -8"
+           width="6" height="1" depth="2.5"
+           color="#CFCFCF"
+           static-body></a-box>
+
+    <!-- Monitor + keyboard on left bench -->
+    <a-box position="-7 2 -8"
+           width="1.5" height="1" depth="0.1"
+           color="#222222"
+           static-body></a-box>
+
+    <a-box position="-7 1.5 -7.6"
+           width="1.5" height="0.1" depth="0.5"
+           color="#333333"
+           static-body></a-box>
+
+    <!-- Beakers on left bench -->
+    <a-cylinder position="-8 1.3 -8.3" radius="0.15" height="0.4" color="#88CCFF" static-body></a-cylinder>
+    <a-cylinder position="-6 1.3 -8.3" radius="0.15" height="0.4" color="#FFAA88" static-body></a-cylinder>
+
+    <!-- RIGHT LAB BENCH -->
+    <a-box position="7 1 -12"
+           width="6" height="1" depth="2.5"
+           color="#CFCFCF"
+           static-body></a-box>
+
+    <!-- Monitor + keyboard on right bench -->
+    <a-box position="7 2 -12"
+           width="1.5" height="1" depth="0.1"
+           color="#222222"
+           static-body></a-box>
+
+    <a-box position="7 1.5 -11.6"
+           width="1.5" height="0.1" depth="0.5"
+           color="#333333"
+           static-body></a-box>
+
+    <!-- SHELVES ON RIGHT WALL -->
+    <a-box position="11 3 -10"
+           width="1.5" height="4" depth="0.8"
+           color="#B0B0B0"
+           static-body></a-box>
+
+    <a-box position="11 2 -10" width="1.5" height="0.1" depth="0.8" color="#999999"></a-box>
+    <a-box position="11 3 -10" width="1.5" height="0.1" depth="0.8" color="#999999"></a-box>
+    <a-box position="11 4 -10" width="1.5" height="0.1" depth="0.8" color="#999999"></a-box>
+
+    <!-- Bottles on shelves -->
+    <a-cylinder position="10.6 2.2 -10" radius="0.12" height="0.4" color="#AAFFAA" static-body></a-cylinder>
+    <a-cylinder position="11.4 2.2 -10" radius="0.12" height="0.4" color="#FF88FF" static-body></a-cylinder>
+    <a-cylinder position="10.6 3.2 -10" radius="0.12" height="0.4" color="#88CCFF" static-body></a-cylinder>
+    <a-cylinder position="11.4 3.2 -10" radius="0.12" height="0.4" color="#FFAA88" static-body></a-cylinder>
+
+    <!-- STORAGE CABINETS ON LEFT WALL -->
+    <a-box position="-11 2 -6"
+           width="2" height="3" depth="2"
+           color="#BEBEBE"
+           static-body></a-box>
+
+    <a-box position="-11 2 -14"
+           width="2" height="3" depth="2"
+           color="#BEBEBE"
+           static-body></a-box>
+
+    <!-- CENTRAL ROLLING CART -->
+    <a-box position="0 1 -10"
+           width="2" height="1" depth="1.5"
+           color="#D8D8D8"
+           static-body></a-box>
+
+    <!-- POWER STATION ON BACK WALL -->
+    <a-box position="0 1 -16"
+           width="8" height="2" depth="2.5"
+           color="#C8C8C8"
+           static-body></a-box>
+
+    <!-- Glowing tubes beside power station -->
+    <a-cylinder position="-4 2 -17"
+                radius="0.4" height="3.5"
+                color="#00FFFF"
+                material="emissive: #00FFFF; emissiveIntensity: 0.7"></a-cylinder>
+
+    <a-cylinder position="4 2 -17"
+                radius="0.4" height="3.5"
+                color="#FF00FF"
+                material="emissive: #FF00FF; emissiveIntensity: 0.7"></a-cylinder>
+
+    <!-- Power switches (visual only for now) -->
+    <a-box position="-2 2 -15.5" width="0.5" height="1" depth="0.2" color="#FF0000" static-body></a-box>
+    <a-box position="0 2 -15.5"  width="0.5" height="1" depth="0.2" color="#FF0000" static-body></a-box>
+    <a-box position="2 2 -15.5"  width="0.5" height="1" depth="0.2" color="#FF0000" static-body></a-box>
+
+    <a-text value="Combination: U+" position="-2 3.4 -15.8" color="red" width="4"></a-text>
+
+    <!-- CONTAINMENT POD AREA (RIGHT SIDE) -->
+    <!-- Pod base -->
+    <a-box position="8 1 -8"
+           width="4" height="1" depth="3"
+           color="#CFCFCF"
+           static-body></a-box>
+
+    <!-- Pod glass -->
+    <a-box position="8 3 -8"
+           width="3" height="4" depth="3"
+           color="#555555"
+           material="opacity: 0.4; transparent: true"
+           static-body></a-box>
+
+    <!-- Core inside pod -->
+    <a-sphere position="8 3 -8"
+              radius="1.1"
+              color="#FF3300"
+              material="emissive: #FF3300; emissiveIntensity: 0.9"
+              animation="property: scale; dir: alternate; dur: 900; loop: true; to: 1.3 1.3 1.3">
+    </a-sphere>
+
+    <!-- Residue on floor -->
+    <a-circle position="8 1.1 -8"
+              radius="1.4"
+              rotation="-90 0 0"
+              color="#FF3300"
+              material="opacity: 0.6; transparent: true"></a-circle>
+
+    <!-- SIMPLE UI TEXT (you can replace later) -->
+    <a-text value="Lab Environment"
+            position="-2 2 -4"
+            color="white"
+            width="4"></a-text>
+
   </a-scene>
 </body>
 </html>
