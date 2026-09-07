@@ -5,192 +5,99 @@
   <script src="https://aframe.io/releases/1.7.1/aframe.min.js"></script>
 
   <script>
-    // Auto door component
-    AFRAME.registerComponent('auto-door', {
-      tick: function () {
-        const playerPos = document.querySelector('#player').object3D.position;
-        const left = document.querySelector('#doorLeft').object3D.position;
-        const right = document.querySelector('#doorRight').object3D.position;
+    let contamination = 0;
+    let playerMarked = false;
 
-        const dist = Math.abs(playerPos.z + 30);
+    // Update contamination meter
+    function updateContamination(amount) {
+      contamination += amount;
+      if (contamination < 0) contamination = 0;
+      if (contamination > 100) contamination = 100;
 
-        if (dist < 5) {
-          left.x = -4;
-          right.x = 4;
-        } else {
-          left.x = -1.5;
-          right.x = 1.5;
-        }
+      document.querySelector('#contamText').setAttribute('value', `Contamination: ${contamination}%`);
+
+      if (contamination >= 100) {
+        triggerFailureEnding();
       }
-    });
+    }
 
-    // Lab button component
-    AFRAME.registerComponent('lab-button', {
-      init: function () {
-        this.el.addEventListener('click', () => {
-          alert("Button pressed — system activated!");
-        });
-      }
-    });
+    // Failure ending placeholder
+    function triggerFailureEnding() {
+      alert("FAILURE ENDING — Contamination reached 100%");
+    }
 
-    // Pulsing core component
-    AFRAME.registerComponent('pulse', {
-      tick: function (t) {
-        const scale = 1 + Math.sin(t / 300) * 0.2;
-        this.el.object3D.scale.set(scale, scale, scale);
-      }
-    });
+    // Intro sequence
+    window.onload = () => {
+      const introAudio = document.querySelector('#introVoice');
+      introAudio.components.sound.playSound();
+
+      setTimeout(() => {
+        document.querySelector('#goalText').setAttribute('visible', true);
+      }, 3000);
+    };
   </script>
 </head>
 
 <body>
 
-  <a-scene fog="type: exponential; color: #d0d0d0; density: 0.03">
+  <a-scene>
 
-    <!-- Lights -->
-    <a-entity light="type: ambient; intensity: 0.4"></a-entity>
+    <!-- AUDIO -->
+    <a-entity id="introVoice" sound="src: url(intro.mp3); autoplay: false"></a-entity>
+
+    <!-- PLAYER -->
+    <a-entity id="player" camera wasd-controls look-controls position="0 1.6 0"></a-entity>
+
+    <!-- NORMAL LIGHTING (Mode C start) -->
+    <a-entity light="type: ambient; intensity: 0.5"></a-entity>
     <a-entity light="type: directional; intensity: 0.8" position="0 10 -10"></a-entity>
 
-    <!-- Player -->
-    <a-entity
-      id="player"
-      camera
-      wasd-controls
-      look-controls
-      position="0 1.6 0">
-    </a-entity>
+    <!-- LAB ROOM -->
+    <a-box position="0 5 -10" width="40" height="10" depth="40"
+           color="#E0E0E0" material="side: double; opacity: 0.95"></a-box>
 
-    <!-- Main lab room -->
-    <a-box
-      position="0 5 -10"
-      width="40"
-      height="10"
-      depth="40"
-      color="#E0E0E0"
-      material="side: double; opacity: 0.95">
-    </a-box>
+    <!-- FLOOR -->
+    <a-plane position="0 0 -10" rotation="-90 0 0"
+             width="40" height="40" color="#FFFFFF"
+             material="metalness: 0.2; roughness: 0.1"></a-plane>
 
-    <!-- Floor -->
-    <a-plane
-      position="0 0 -10"
-      rotation="-90 0 0"
-      width="40"
-      height="40"
-      color="#FFFFFF"
-      material="metalness: 0.2; roughness: 0.1">
-    </a-plane>
-
-    <!-- Ceiling lights -->
+    <!-- CEILING LIGHTS -->
     <a-box position="-10 9 -10" width="6" height="0.2" depth="1" color="#FFFFFF"></a-box>
     <a-box position="0 9 -10" width="6" height="0.2" depth="1" color="#FFFFFF"></a-box>
     <a-box position="10 9 -10" width="6" height="0.2" depth="1" color="#FFFFFF"></a-box>
 
-    <!-- Lab tables -->
+    <!-- LAB TABLES -->
     <a-box position="-10 1 -5" width="6" height="1" depth="2" color="#CCCCCC"></a-box>
     <a-box position="5 1 -15" width="6" height="1" depth="2" color="#CCCCCC"></a-box>
 
-    <!-- Computers -->
-    <a-box position="-10 2 -5" width="1" height="0.7" depth="0.1" color="#222222"></a-box>
-    <a-box position="5 2 -15" width="1" height="0.7" depth="0.1" color="#222222"></a-box>
+    <!-- COMPUTERS -->
+    <a-box position="-10 2 -5" width="1" height="0.7" depth="0.1" color="#222"></a-box>
+    <a-box position="5 2 -15" width="1" height="0.7" depth="0.1" color="#222"></a-box>
 
-    <!-- Glowing tubes -->
-    <a-cylinder
-      position="-5 2 -20"
-      radius="0.5"
-      height="4"
-      color="#00FFFF"
-      material="emissive: #00FFFF; emissiveIntensity: 0.6">
-    </a-cylinder>
+    <!-- GLOWING TUBES -->
+    <a-cylinder position="-5 2 -20" radius="0.5" height="4"
+                color="#00FFFF" material="emissive: #00FFFF; emissiveIntensity: 0.6"></a-cylinder>
 
-    <a-cylinder
-      position="-3 2 -20"
-      radius="0.5"
-      height="4"
-      color="#FF00FF"
-      material="emissive: #FF00FF; emissiveIntensity: 0.6">
-    </a-cylinder>
+    <a-cylinder position="-3 2 -20" radius="0.5" height="4"
+                color="#FF00FF" material="emissive: #FF00FF; emissiveIntensity: 0.6"></a-cylinder>
 
-    <!-- Containment chamber -->
-    <a-box
-      position="10 2 -5"
-      width="4"
-      height="4"
-      depth="4"
-      color="#444444"
-      material="opacity: 0.4; transparent: true">
-    </a-box>
+    <!-- CONTAINMENT CHAMBER -->
+    <a-box position="10 2 -5" width="4" height="4" depth="4"
+           color="#444" material="opacity: 0.4; transparent: true"></a-box>
 
-    <!-- Pulsing mutation core -->
-    <a-sphere
-      position="10 2 -5"
-      radius="1"
-      color="#FF3300"
-      material="emissive: #FF3300; emissiveIntensity: 0.8"
-      pulse>
+    <!-- PULSING CORE -->
+    <a-sphere id="core" position="10 2 -5" radius="1"
+              color="#FF3300" material="emissive: #FF3300; emissiveIntensity: 0.8"
+              animation="property: scale; dir: alternate; dur: 800; loop: true; to: 1.2 1.2 1.2">
     </a-sphere>
 
-    <!-- Wall cabinets -->
-    <a-box position="-15 4 -10" width="8" height="3" depth="2" color="#CFCFCF"></a-box>
+    <!-- UI: CONTAMINATION METER -->
+    <a-text id="contamText" value="Contamination: 0%" position="-1 2 -3"
+            color="red" width="4"></a-text>
 
-    <!-- Storage shelves -->
-    <a-box position="12 2 -18" width="4" height="4" depth="1" color="#B0B0B0"></a-box>
-
-    <!-- Rolling lab cart -->
-    <a-box position="-5 1 -12" width="2" height="1" depth="1" color="#DDDDDD"></a-box>
-
-    <!-- Microscope -->
-    <a-entity position="-10 1.2 -5">
-      <a-cylinder radius="0.2" height="0.5" color="#333"></a-cylinder>
-      <a-box position="0 0.4 0.3" width="0.4" height="0.2" depth="0.6" color="#222"></a-box>
-    </a-entity>
-
-    <!-- Beaker -->
-    <a-cylinder position="5 1.2 -15" radius="0.3" height="0.6" color="#88CCFF"></a-cylinder>
-
-    <!-- Test tube rack -->
-    <a-box position="6 1.1 -15" width="1.2" height="0.2" depth="0.6" color="#444"></a-box>
-    <a-cylinder position="5.6 1.3 -15" radius="0.1" height="0.4" color="#FF00FF"></a-cylinder>
-    <a-cylinder position="6 1.3 -15" radius="0.1" height="0.4" color="#00FFAA"></a-cylinder>
-    <a-cylinder position="6.4 1.3 -15" radius="0.1" height="0.4" color="#FFFF00"></a-cylinder>
-
-    <!-- Door frame -->
-    <a-box position="0 3 -30" width="6" height="6" depth="0.5" color="#666"></a-box>
-
-    <!-- Sliding doors -->
-    <a-box id="doorLeft" position="-1.5 3 -29.8" width="3" height="6" depth="0.2" color="#999"></a-box>
-    <a-box id="doorRight" position="1.5 3 -29.8" width="3" height="6" depth="0.2" color="#999"></a-box>
-
-    <!-- Auto-door controller -->
-    <a-entity auto-door></a-entity>
-
-    <!-- Hologram screen -->
-    <a-plane
-      position="-10 3 -8"
-      width="4"
-      height="2"
-      color="#00FFFF"
-      material="opacity: 0.4; emissive: #00FFFF; emissiveIntensity: 0.7">
-    </a-plane>
-
-    <!-- Interactive button -->
-    <a-cylinder
-      id="button"
-      position="8 1 -10"
-      radius="0.3"
-      height="0.2"
-      color="#FF0000"
-      lab-button>
-    </a-cylinder>
-
-    <!-- Glowing floor strip -->
-    <a-box
-      position="0 0.01 -10"
-      width="40"
-      height="0.05"
-      depth="0.5"
-      color="#00FFFF"
-      material="emissive: #00FFFF; emissiveIntensity: 0.5">
-    </a-box>
+    <!-- UI: GOAL TEXT -->
+    <a-text id="goalText" value="Objective: Restore Power" position="-1 1.5 -3"
+            color="white" width="4" visible="false"></a-text>
 
   </a-scene>
 
