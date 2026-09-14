@@ -2,43 +2,120 @@
 <html>
 <head>
   <meta charset="utf-8" />
-  <title>Detailed Sci‑Fi Lab (A‑Frame)</title>
+  <title>Working Sci‑Fi Lab — A‑Frame</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <!-- A-Frame core -->
   <script src="https://aframe.io/releases/1.7.1/aframe.min.js"></script>
 
-  <!-- Physics system for collisions -->
-  <script src="https://cdn.jsdelivr.net/gh/n5ro/aframe-physics-system@v4.0.1/dist/aframe-physics-system.min.js"></script>
-
-  <!-- Particle system for smoke/fog -->
-  <script src="https://unpkg.com/aframe-particle-system-component@3.0.0/dist/aframe-particle-system-component.min.js"></script>
-
   <style>
-    body { margin: 0; font-family: sans-serif; background: #000; }
+    body { margin: 0; background: #000; }
+    /* small on-screen hint */
+    #hint {
+      position: fixed;
+      left: 12px;
+      bottom: 12px;
+      color: #ddd;
+      font-family: system-ui, sans-serif;
+      background: rgba(0,0,0,0.45);
+      padding: 8px 10px;
+      border-radius: 6px;
+      font-size: 13px;
+      z-index: 999;
+    }
   </style>
 
   <script>
-    // ---------- Game state helpers ----------
-    const Game = {
-      contamination: 0
-    };
+    /* -------------------------
+       Utility: collision system
+       - Attach `prevent-penetration` to the camera rig (playerRig)
+       - Any entity with class="collidable" will block the player
+       - Uses THREE.Box3 world bounding boxes and a small player radius
+       ------------------------- */
+    AFRAME.registerComponent('prevent-penetration', {
+      schema: {
+        radius: { type: 'number', default: 0.35 },   // player collision radius
+        height: { type: 'number', default: 1.6 }     // player height (for vertical checks)
+      },
+      init: function () {
+        this.prevPos = new THREE.Vector3();
+        this.playerPos = new THREE.Vector3();
+        this.tmpBox = new THREE.Box3();
+        this.colliders = [];
+        // gather collidable elements initially and whenever scene changes
+        this.updateColliders();
+        // update colliders if new nodes are added later
+        const observer = new MutationObserver(() => this.updateColliders());
+        observer.observe(this.el.sceneEl, { childList: true, subtree: true });
+      },
+      updateColliders: function () {
+        // collect all elements with class 'collidable'
+        const nodes = Array.from(this.el.sceneEl.querySelectorAll('.collidable'));
+        this.colliders = nodes.map(n => n.object3D);
+      },
+      tick: function (time, dt) {
+        const rig = this.el; // player rig entity
+        // store previous position
+        this.prevPos.copy(rig.object3D.position);
+        // after movement by wasd-controls, check collisions
+        this.playerPos.copy(rig.object3D.position);
 
-    function setContamination(delta) {
-      Game.contamination = Math.max(0, Math.min(100, Game.contamination + delta));
-      const t = document.querySelector('#contamText');
-      if (t) t.setAttribute('value', `Contamination: ${Game.contamination}%`);
-      if (Game.contamination >= 100) {
-        // simple failure visual
-        document.querySelector('#goalText').setAttribute('value', 'CONTAINMENT FAILURE');
-        document.querySelector('#goalText').setAttribute('color', '#ff4444');
-        // full red ambient
-        document.querySelector('#ambientLight').setAttribute('light', 'color', '#660000');
+        // create a small AABB around player position
+        const playerBox = new THREE.Box3(
+          new THREE.Vector3(this.playerPos.x - this.data.radius, this.playerPos.y - 0.1, this.playerPos.z - this.data.radius),
+          new THREE.Vector3(this.playerPos.x + this.data.radius, this.playerPos.y + this.data.height, this.playerPos.z + this.data.radius)
+        );
+
+        // test against each collider's world bounding box
+        for (let i = 0; i < this.colliders.length; i++) {
+          const obj = this.colliders[i];
+          if (!obj) continue;
+          // compute world bounding box
+          this.tmpBox.setFromObject(obj);
+          if (this.tmpBox.isEmpty()) continue;
+          // expand collider slightly so player doesn't clip
+          this.tmpBox.expandByScalar(0.02);
+          if (playerBox.intersectsBox(this.tmpBox)) {
+            // collision detected — revert to previous position
+            rig.object3D.position.copy(this.prevPos);
+            // small nudge away from collider to avoid sticking
+            const push = new THREE.Vector3().subVectors(this.prevPos, this.playerPos).setY(0).normalize().multiplyScalar(0.05);
+            rig.object3D.position.add(push);
+            break;
+          }
+        }
       }
-    }
+    });
 
-    // ---------- Flicker helper ----------
-    AFRAME.registerComponent('flicker', {
-      schema: { min: {type:'number', default:0.2}, max: {type:'number', default:1.2}, speed: {type:'number', default:200} },
+    /* -------------------------
+       Simple clickable switch component
+       - toggles color and calls a global callback
+       ------------------------- */
+    AFRAME.registerComponent('click-switch', {
+      schema: {
+        onColor: { type: 'color', default: '#00ff66' },
+        offColor: { type: 'color', default: '#ff4444' }
+      },
+      init: function () {
+        this.on = false;
+        this.el.setAttribute('color', this.data.offColor);
+        this.el.classList.add('collidable'); // switches block movement slightly
+        this.el.addEventListener('click', () => {
+          this.on = !this.on;
+          this.el.setAttribute('color', this.on ? this.data.onColor : this.data.offColor);
+          // update contamination globally (small example)
+          const delta = this.on ? -6 : 6;
+          const evt = new CustomEvent('contam-change', { detail: { delta } });
+          window.dispatchEvent(evt);
+        });
+      }
+    });
+
+    /* -------------------------
+       Small helper to animate emissive intensity (flicker)
+       ------------------------- */
+    AFRAME.registerComponent('emissive-flicker', {
+      schema: { min: 0.2, max: 1.2, speed: 150 },
       init: function () {
         this.time = 0;
       },
@@ -46,249 +123,185 @@
         this.time += dt;
         if (this.time > this.data.speed) {
           const val = Math.random() * (this.data.max - this.data.min) + this.data.min;
-          if (this.el.getAttribute('light')) {
-            this.el.setAttribute('light', 'intensity', val);
-          } else {
-            this.el.setAttribute('material', 'emissiveIntensity', val);
-          }
+          const mat = this.el.getAttribute('material') || {};
+          mat.emissiveIntensity = val;
+          this.el.setAttribute('material', mat);
           this.time = 0;
         }
       }
     });
 
-    // ---------- Player ground-check to prevent falling through tiny gaps ----------
-    AFRAME.registerComponent('ground-check', {
-      tick: function () {
-        const player = this.el;
-        if (player.object3D.position.y < -2) {
-          player.object3D.position.set(0, 1.6, 0);
-          player.body && player.body.velocity && (player.body.velocity.set(0,0,0));
+    /* -------------------------
+       Contamination UI handler
+       ------------------------- */
+    document.addEventListener('DOMContentLoaded', () => {
+      let contamination = 0;
+      const contamText = () => document.querySelector('#contamText');
+      function setContam(v) {
+        contamination = Math.max(0, Math.min(100, v));
+        const t = contamText();
+        if (t) t.setAttribute('value', `Contamination: ${Math.round(contamination)}%`);
+        // visual cue: change color of goal text as contamination rises
+        const goal = document.querySelector('#goalText');
+        if (goal) {
+          if (contamination > 70) goal.setAttribute('color', '#ff4444');
+          else if (contamination > 30) goal.setAttribute('color', '#ffcc00');
+          else goal.setAttribute('color', '#88ff88');
         }
       }
-    });
-
-    // ---------- Simple clickable switch component ----------
-    AFRAME.registerComponent('click-switch', {
-      schema: { onColor: {type:'color', default:'#00ff66'}, offColor: {type:'color', default:'#ff4444'} },
-      init: function () {
-        this.on = false;
-        this.el.addEventListener('click', () => {
-          this.on = !this.on;
-          this.el.setAttribute('color', this.on ? this.data.onColor : this.data.offColor);
-          setContamination(this.on ? -5 : 5);
-        });
-      }
-    });
-
-    // ---------- Door open animation component ----------
-    AFRAME.registerComponent('auto-door', {
-      schema: { openX: {type:'number', default:4}, closedX: {type:'number', default:1.5}, triggerZ: {type:'number', default:-24}, range: {type:'number', default:5} },
-      tick: function () {
-        const playerPos = document.querySelector('#playerRig').object3D.position;
-        const left = document.querySelector('#doorLeft').object3D.position;
-        const right = document.querySelector('#doorRight').object3D.position;
-        const dist = Math.abs(playerPos.z - this.data.triggerZ);
-        if (dist < this.data.range) {
-          left.x = -this.data.openX;
-          right.x = this.data.openX;
-        } else {
-          left.x = -this.data.closedX;
-          right.x = this.data.closedX;
-        }
-      }
-    });
-
-    // ---------- Prevent pointer lock issues on click ----------
-    document.addEventListener('click', () => {
-      const scene = document.querySelector('a-scene');
-      if (scene && scene.is('loaded')) {
-        scene.canvas && scene.canvas.requestPointerLock && scene.canvas.requestPointerLock();
-      }
+      // listen for switch events
+      window.addEventListener('contam-change', (e) => {
+        setContam(contamination + (e.detail && e.detail.delta ? e.detail.delta : 0));
+      });
+      // initial
+      setContam(12);
     });
   </script>
 </head>
 
 <body>
-  <a-scene physics="gravity: -9.8; debug: false" background="color: #05050a" embedded>
+  <div id="hint">WASD to move • Mouse to look • Click switches</div>
 
-    <!-- AUDIO (place intro.mp3 and alarm.mp3 in same folder if you want) -->
-    <a-entity id="introSound" sound="src: url(intro.mp3); autoplay: false; volume: 0.6"></a-entity>
-    <a-entity id="alarmSound" sound="src: url(alarm.mp3); autoplay: false; volume: 0.9"></a-entity>
+  <a-scene background="color: #05050a" embedded>
 
-    <!-- ---------- CAMERA RIG (capsule collider) ---------- -->
-    <a-entity id="playerRig" position="0 1.6 6" ground-check>
-      <a-entity id="player"
-                camera
-                look-controls
-                wasd-controls="acceleration: 30; fly: false"
-                dynamic-body="shape: capsule; mass: 5; linearDamping: 0.9; angularDamping: 1">
-      </a-entity>
+    <!-- CAMERA RIG with collision prevention -->
+    <a-entity id="playerRig" position="0 1.6 6" prevent-penetration>
+      <a-entity id="camera" camera look-controls wasd-controls="acceleration:30"></a-entity>
     </a-entity>
 
-    <!-- ---------- LIGHTING ---------- -->
-    <a-entity id="ambientLight" light="type: ambient; intensity: 0.25; color: #ffffff"></a-entity>
-    <a-entity id="mainDir" light="type: directional; intensity: 0.9; color: #ffffff" position="6 12 6"></a-entity>
+    <!-- LIGHTING -->
+    <a-entity light="type: ambient; intensity: 0.25; color: #ffffff"></a-entity>
+    <a-entity light="type: directional; intensity: 0.9; color: #ffffff" position="6 12 6"></a-entity>
 
     <!-- subtle red emergency fill -->
-    <a-entity light="type: point; intensity: 0.8; color: #ff3333" position="0 4 -6" flicker></a-entity>
+    <a-entity light="type: point; intensity: 0.8; color: #ff3333" position="0 4 -6" emissive-flicker></a-entity>
 
-    <!-- ---------- ROOM (floor, walls, ceiling) ---------- -->
-    <!-- Floor with subtle grid look using material properties -->
-    <a-box id="floor" position="0 0 -8" width="28" height="0.2" depth="20"
-           color="#1b1b1b"
-           material="metalness: 0.2; roughness: 0.6"
-           static-body></a-box>
+    <!-- FLOOR -->
+    <a-box class="collidable" position="0 0 -8" width="28" height="0.2" depth="20"
+           color="#1b1b1b" material="metalness:0.2; roughness:0.6"></a-box>
 
-    <!-- Ceiling -->
-    <a-box position="0 6 -8" width="28" height="0.2" depth="20"
-           color="#111111" static-body></a-box>
+    <!-- CEILING -->
+    <a-box class="collidable" position="0 6 -8" width="28" height="0.2" depth="20" color="#111111"></a-box>
 
-    <!-- Back wall -->
-    <a-box position="0 3 -18" width="28" height="6" depth="0.2"
-           color="#2b2b2b" static-body></a-box>
+    <!-- WALLS -->
+    <a-box class="collidable" position="0 3 -18" width="28" height="6" depth="0.2" color="#2b2b2b"></a-box>
+    <a-box class="collidable" position="0 3 2"   width="28" height="6" depth="0.2" color="#2b2b2b"></a-box>
+    <a-box class="collidable" position="-14 3 -8" width="0.2" height="6" depth="20" color="#2b2b2b"></a-box>
+    <a-box class="collidable" position="14 3 -8"  width="0.2" height="6" depth="20" color="#2b2b2b"></a-box>
 
-    <!-- Front wall -->
-    <a-box position="0 3 2" width="28" height="6" depth="0.2"
-           color="#2b2b2b" static-body></a-box>
-
-    <!-- Left wall -->
-    <a-box position="-14 3 -8" width="0.2" height="6" depth="20"
-           color="#2b2b2b" static-body></a-box>
-
-    <!-- Right wall -->
-    <a-box position="14 3 -8" width="0.2" height="6" depth="20"
-           color="#2b2b2b" static-body></a-box>
-
-    <!-- ---------- Ceiling light panels (emissive) ---------- -->
+    <!-- CEILING PANELS (emissive) -->
     <a-box position="-6 5.8 -8" width="4" height="0.12" depth="2" color="#ffffff"
-           material="emissive: #ffffff; emissiveIntensity: 0.6"></a-box>
-    <a-box position="0 5.8 -8" width="4" height="0.12" depth="2" color="#ffffff"
-           material="emissive: #ffffff; emissiveIntensity: 0.6"></a-box>
-    <a-box position="6 5.8 -8" width="4" height="0.12" depth="2" color="#ffffff"
-           material="emissive: #ffffff; emissiveIntensity: 0.6"></a-box>
+           material="emissive:#ffffff; emissiveIntensity:0.6"></a-box>
+    <a-box position="0 5.8 -8"  width="4" height="0.12" depth="2" color="#ffffff"
+           material="emissive:#ffffff; emissiveIntensity:0.6"></a-box>
+    <a-box position="6 5.8 -8"  width="4" height="0.12" depth="2" color="#ffffff"
+           material="emissive:#ffffff; emissiveIntensity:0.6"></a-box>
 
-    <!-- ---------- Left bench cluster ---------- -->
-    <a-box position="-9 1 -6" width="8" height="1" depth="2.2" color="#3a3a3a" static-body></a-box>
+    <!-- LEFT BENCH -->
+    <a-box class="collidable" position="-9 1 -6" width="8" height="1" depth="2.2" color="#3a3a3a"></a-box>
 
-    <!-- Monitor -->
-    <a-box position="-10.2 2 -6" width="1.6" height="0.9" depth="0.08" color="#0b0b0b" static-body></a-box>
+    <!-- Monitor (left) -->
+    <a-box class="collidable" position="-10.2 2 -6" width="1.6" height="0.9" depth="0.08" color="#0b0b0b"></a-box>
     <a-plane position="-10.2 2 -5.95" width="1.4" height="0.8" color="#003344"
-             material="emissive: #003344; emissiveIntensity: 0.6">
+             material="emissive:#003344; emissiveIntensity:0.6">
       <a-text value="ANALYSIS" position="-0.6 0.15 0.01" color="#88ffcc" width="2.6"></a-text>
     </a-plane>
 
-    <!-- Keyboard -->
-    <a-box position="-9.6 1.45 -5.4" width="1.2" height="0.08" depth="0.6" color="#111111" static-body></a-box>
-
-    <!-- Microscope -->
+    <!-- Microscope + petri dishes -->
     <a-entity position="-7.2 1.2 -6.2">
       <a-cylinder radius="0.18" height="0.5" color="#222222"></a-cylinder>
       <a-box position="0 0.4 0.25" width="0.36" height="0.18" depth="0.5" color="#111111"></a-box>
     </a-entity>
-
-    <!-- Petri dishes -->
     <a-cylinder position="-8.2 1.12 -5.4" radius="0.18" height="0.06" color="#00ff55"
-                material="emissive: #00ff55; emissiveIntensity: 0.8"></a-cylinder>
-    <a-cylinder position="-7.6 1.12 -5.4" radius="0.18" height="0.06" color="#ff66ff"
-                material="emissive: #ff66ff; emissiveIntensity: 0.6"></a-cylinder>
+                material="emissive:#00ff55; emissiveIntensity:0.8"></a-cylinder>
 
-    <!-- ---------- Right bench cluster ---------- -->
-    <a-box position="9 1 -10" width="8" height="1" depth="2.2" color="#3a3a3a" static-body></a-box>
+    <!-- RIGHT BENCH -->
+    <a-box class="collidable" position="9 1 -10" width="8" height="1" depth="2.2" color="#3a3a3a"></a-box>
 
-    <!-- Monitor -->
-    <a-box position="10.2 2 -10" width="1.6" height="0.9" depth="0.08" color="#0b0b0b" static-body></a-box>
+    <!-- Monitor (right) -->
+    <a-box class="collidable" position="10.2 2 -10" width="1.6" height="0.9" depth="0.08" color="#0b0b0b"></a-box>
     <a-plane position="10.2 2 -9.95" width="1.4" height="0.8" color="#220033"
-             material="emissive: #220033; emissiveIntensity: 0.6">
+             material="emissive:#220033; emissiveIntensity:0.6">
       <a-text value="CONTAINMENT" position="-0.6 0.15 0.01" color="#ffcc88" width="2.6"></a-text>
     </a-plane>
 
     <!-- Chemical bottles -->
-    <a-cylinder position="8.2 1.2 -9.4" radius="0.16" height="0.5" color="#88ccff"></a-cylinder>
-    <a-cylinder position="9.2 1.2 -9.4" radius="0.16" height="0.5" color="#ff88ff"></a-cylinder>
-    <a-cylinder position="10.2 1.2 -9.4" radius="0.16" height="0.5" color="#aaff88"></a-cylinder>
+    <a-cylinder class="collidable" position="8.2 1.2 -9.4" radius="0.16" height="0.5" color="#88ccff"></a-cylinder>
+    <a-cylinder class="collidable" position="9.2 1.2 -9.4" radius="0.16" height="0.5" color="#ff88ff"></a-cylinder>
 
-    <!-- ---------- Central containment pod ---------- -->
-    <a-box position="0 1 -2" width="6" height="1" depth="4" color="#2f2f2f" static-body></a-box>
-
-    <a-box position="0 3 -2" width="4" height="4" depth="4"
-           color="#666666" material="opacity: 0.28; transparent: true" static-body></a-box>
-
-    <!-- cracked glass decal (visual) -->
+    <!-- CENTRAL CONTAINMENT POD -->
+    <a-box class="collidable" position="0 1 -2" width="6" height="1" depth="4" color="#2f2f2f"></a-box>
+    <a-box class="collidable" position="0 3 -2" width="4" height="4" depth="4"
+           color="#666666" material="opacity:0.28; transparent:true"></a-box>
     <a-plane position="0 3 -0.5" width="2.6" height="2.6" color="#ffffff"
-             material="opacity: 0.12; transparent: true"></a-plane>
-
-    <!-- core -->
+             material="opacity:0.12; transparent:true"></a-plane>
     <a-sphere id="core" position="0 3 -2" radius="1.1" color="#ff3300"
-              material="emissive: #ff3300; emissiveIntensity: 1"
+              material="emissive:#ff3300; emissiveIntensity:1"
               animation="property: scale; dir: alternate; dur: 900; loop: true; to: 1.25 1.25 1.25"></a-sphere>
-
-    <!-- residue puddle -->
     <a-circle position="0 1.05 -2" rotation="-90 0 0" radius="1.4" color="#00ff55"
-              material="opacity: 0.65; emissive: #00ff55; emissiveIntensity: 0.6"></a-circle>
+              material="opacity:0.65; emissive:#00ff55; emissiveIntensity:0.6"></a-circle>
 
-    <!-- ---------- Back power console and switches ---------- -->
-    <a-box position="0 1 -14" width="10" height="1.2" depth="2.6" color="#2b2b2b" static-body></a-box>
+    <!-- BACK POWER CONSOLE -->
+    <a-box class="collidable" position="0 1 -14" width="10" height="1.2" depth="2.6" color="#2b2b2b"></a-box>
 
-    <!-- three clickable switches (visual + interactive) -->
-    <a-box id="ps1" position="-2 2 -13.6" width="0.5" height="1" depth="0.2" color="#ff4444"
-           click-switch static-body></a-box>
-    <a-box id="ps2" position="0 2 -13.6" width="0.5" height="1" depth="0.2" color="#ff4444"
-           click-switch static-body></a-box>
-    <a-box id="ps3" position="2 2 -13.6" width="0.5" height="1" depth="0.2" color="#ff4444"
-           click-switch static-body></a-box>
+    <!-- Three interactive switches (click-switch) -->
+    <a-box id="sw1" position="-2 2 -13.6" width="0.5" height="1" depth="0.2" color="#ff4444"
+           click-switch></a-box>
+    <a-box id="sw2" position="0 2 -13.6"  width="0.5" height="1" depth="0.2" color="#ff4444"
+           click-switch></a-box>
+    <a-box id="sw3" position="2 2 -13.6"  width="0.5" height="1" depth="0.2" color="#ff4444"
+           click-switch></a-box>
 
-    <a-text value="Objective: Restore Power" id="goalText" position="-3 3 -13.4" color="#ffffff" width="6"></a-text>
+    <a-text id="goalText" value="Objective: Restore Power" position="-3 3 -13.4" color="#88ff88" width="6"></a-text>
 
-    <!-- glowing tubes flanking console -->
+    <!-- GLOWING TUBES -->
     <a-cylinder position="-5 2 -14" radius="0.35" height="3.2" color="#00ffff"
-                material="emissive: #00ffff; emissiveIntensity: 0.8"></a-cylinder>
+                material="emissive:#00ffff; emissiveIntensity:0.8"></a-cylinder>
     <a-cylinder position="5 2 -14" radius="0.35" height="3.2" color="#ff00ff"
-                material="emissive: #ff00ff; emissiveIntensity: 0.8"></a-cylinder>
+                material="emissive:#ff00ff; emissiveIntensity:0.8"></a-cylinder>
 
-    <!-- ---------- Emergency screens and signage ---------- -->
+    <!-- EMERGENCY SCREENS -->
     <a-plane position="-9 4 -16" width="3.5" height="1.6" color="#220000"
-             material="emissive: #220000; emissiveIntensity: 0.9">
+             material="emissive:#220000; emissiveIntensity:0.9">
       <a-text value="VENT SYSTEM OVERRIDE" position="-1.6 0.3 0.01" color="#ffdddd" width="3.2"></a-text>
     </a-plane>
 
     <a-plane position="9 4 -16" width="4" height="1.6" color="#220000"
-             material="emissive: #220000; emissiveIntensity: 0.9">
+             material="emissive:#220000; emissiveIntensity:0.9">
       <a-text value="CONTAINMENT OVERRIDE" position="-1.8 0.3 0.01" color="#ffdddd" width="3.8"></a-text>
     </a-plane>
 
     <a-plane position="0 5 1.2" width="4" height="0.9" color="#660000"
-             material="emissive: #660000; emissiveIntensity: 0.9">
+             material="emissive:#660000; emissiveIntensity:0.9">
       <a-text value="EMERGENCY EXIT LOCKED" position="-1.6 0.2 0.01" color="#ffffff" width="3.6"></a-text>
     </a-plane>
 
-    <!-- ---------- Vents with fog leaking ---------- -->
-    <a-box position="6 4 -18.8" width="3.5" height="1.2" depth="0.2" color="#444444" static-body></a-box>
-    <a-entity position="6 3.6 -18.8" particle-system="preset: dust; particleCount: 220; color: #00ff55; size: 0.35; opacity: 0.6"></a-entity>
+    <!-- VENTS with subtle green fog (visual only) -->
+    <a-box position="6 4 -18.8" width="3.5" height="1.2" depth="0.2" color="#444444" class="collidable"></a-box>
+    <a-plane position="6 3.6 -18.7" width="2.8" height="0.8" rotation="0 0 0"
+             color="#00ff55" material="opacity:0.08; emissive:#00ff55; emissiveIntensity:0.6"></a-plane>
 
-    <a-box position="-6 4 -18.8" width="3.5" height="1.2" depth="0.2" color="#444444" static-body></a-box>
-    <a-entity position="-6 3.6 -18.8" particle-system="preset: dust; particleCount: 220; color: #00ff55; size: 0.35; opacity: 0.6"></a-entity>
+    <a-box position="-6 4 -18.8" width="3.5" height="1.2" depth="0.2" color="#444444" class="collidable"></a-box>
+    <a-plane position="-6 3.6 -18.7" width="2.8" height="0.8" rotation="0 0 0"
+             color="#00ff55" material="opacity:0.08; emissive:#00ff55; emissiveIntensity:0.6"></a-plane>
 
-    <!-- ---------- Sparks (animated emissive boxes) ---------- -->
+    <!-- SPARKS (small emissive boxes with flicker) -->
     <a-box position="-4 2 -10" width="0.2" height="0.2" depth="0.2" color="#ffaa00"
-           material="emissive: #ffaa00; emissiveIntensity: 0.9" flicker></a-box>
+           material="emissive:#ffaa00; emissiveIntensity:0.9" emissive-flicker></a-box>
     <a-box position="4 2 -6" width="0.2" height="0.2" depth="0.2" color="#ffaa00"
-           material="emissive: #ffaa00; emissiveIntensity: 0.9" flicker></a-box>
+           material="emissive:#ffaa00; emissiveIntensity:0.9" emissive-flicker></a-box>
 
-    <!-- ---------- UI: contamination text ---------- -->
+    <!-- DOOR (visual) -->
+    <a-box position="0 3 2.1" width="6" height="6" depth="0.1" color="#111111" class="collidable"></a-box>
+    <a-box id="doorLeft" position="-1.5 3 2.05" width="3" height="6" depth="0.05" color="#222222" class="collidable"></a-box>
+    <a-box id="doorRight" position="1.5 3 2.05" width="3" height="6" depth="0.05" color="#222222" class="collidable"></a-box>
+
+    <!-- small crates -->
+    <a-box position="-3 0.6 -4" width="1" height="0.6" depth="0.8" color="#2a2a2a" class="collidable"></a-box>
+    <a-box position="3 0.6 -4" width="1" height="0.6" depth="0.8" color="#2a2a2a" class="collidable"></a-box>
+
+    <!-- CONTAMINATION UI (world-space) -->
     <a-text id="contamText" value="Contamination: 0%" position="-3 2.6 -6" color="#00ff55" width="4"></a-text>
-
-    <!-- ---------- Sliding door (visual) ---------- -->
-    <a-box position="0 3 2.1" width="6" height="6" depth="0.1" color="#111111" static-body></a-box>
-    <a-box id="doorLeft" position="-1.5 3 2.05" width="3" height="6" depth="0.05" color="#222222" static-body></a-box>
-    <a-box id="doorRight" position="1.5 3 2.05" width="3" height="6" depth="0.05" color="#222222" static-body></a-box>
-    <a-entity auto-door></a-entity>
-
-    <!-- ---------- Small decorative crates and cables ---------- -->
-    <a-box position="-3 0.6 -4" width="1" height="0.6" depth="0.8" color="#2a2a2a" static-body></a-box>
-    <a-box position="3 0.6 -4" width="1" height="0.6" depth="0.8" color="#2a2a2a" static-body></a-box>
-
-    <a-cylinder position="-2.2 0.2 -3.2" radius="0.05" height="1.6" color="#222" rotation="0 0 20"></a-cylinder>
-    <a-cylinder position="2.2 0.2 -3.2" radius="0.05" height="1.6" color="#222" rotation="0 0 -20"></a-cylinder>
 
   </a-scene>
 </body>
