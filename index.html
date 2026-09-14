@@ -66,6 +66,13 @@
     position:fixed;inset:0;background:var(--danger);opacity:0;pointer-events:none;z-index:6;
   }
 
+  #startHint{
+    position:fixed;bottom:18px;left:50%;transform:translateX(-50%);
+    font-family:'Share Tech Mono',monospace;color:var(--dim);font-size:12px;
+    background:var(--panel);border:1px solid var(--line);padding:6px 14px;z-index:5;
+    pointer-events:none;
+  }
+
   .overlay{
     position:fixed;inset:0;display:none;align-items:center;justify-content:center;flex-direction:column;
     background:rgba(3,4,5,.94);z-index:20;text-align:center;padding:40px;
@@ -107,6 +114,8 @@
   <div id="crosshair"></div>
 </div>
 
+<div id="startHint" style="display:none;">Click the screen once to look around · WASD to move · click objects to interact</div>
+
 <div id="flash"></div>
 
 <div id="introOverlay" class="overlay active">
@@ -114,7 +123,8 @@
   <p>
     Power failed six minutes ago. Contamination is climbing.
     Restore power, stabilize the sample, and reach containment override
-    before the room is lost. Click to look around, and click objects to interact.
+    before the room is lost. Click the screen to look around (WASD to move),
+    and click objects to interact.
   </p>
   <button id="enterBtn">ENTER THE LAB</button>
 </div>
@@ -137,7 +147,7 @@
   <button onclick="location.reload()">RESTART</button>
 </div>
 
-<a-scene id="scene" background="color: #050607" fog="type: linear; color: #050607; near: 6; far: 22">
+<a-scene id="scene" background="color: #050607" fog="type: linear; color: #050607; near: 6; far: 22" renderer="physicallyCorrectLights: false">
 
   <a-assets>
     <audio id="sfx-alarm"   src="assets/audio/alarm.mp3"   preload="auto"></audio>
@@ -149,7 +159,7 @@
   </a-assets>
 
   <a-entity id="rig" position="0 1.6 4" movement-controls="fly:false">
-    <a-camera look-controls wasd-controls="acceleration:60">
+    <a-camera look-controls="pointerLockEnabled: true" wasd-controls="acceleration:60">
       <a-cursor
         id="cursor"
         cursor="rayOrigin: mouse"
@@ -345,6 +355,8 @@ setInterval(() => {
 
 $('#enterBtn').addEventListener('click', () => {
   $('#introOverlay').classList.remove('active');
+  $('#startHint').style.display = 'block';
+  setTimeout(() => { $('#startHint').style.display = 'none'; }, 6000);
   playSound('sfx-voice');
   setStage('POWER FAILURE', 'Restore the relay to bring systems back online.');
   setGoalText('RESTORE POWER.');
